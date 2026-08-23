@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-<link rel="icon" href="favicon.ico" type="image/x-icon">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
   <title>Film Streaming Finder (België)</title>
   <style>
     body {
@@ -55,6 +55,14 @@
     .results {
       margin-top: 20px;
     }
+    .movie-title-link {
+      color: #fff;
+      text-decoration: none;
+    }
+    .movie-title-link:hover {
+      text-decoration: underline;
+      color: #e50914;
+    }
     .provider-list {
       list-style: none;
       padding: 0;
@@ -73,6 +81,14 @@
       height: 32px;
       border-radius: 4px;
     }
+    .provider-link {
+      color: #64b5f6;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .provider-link:hover {
+      text-decoration: underline;
+    }
     .error {
       color: #ff6b6b;
     }
@@ -83,31 +99,45 @@
   <div class="container">
     <h1>Zoek Film Streaming (België)</h1>
     <form id="searchForm" class="search-box">
-      <input type="text" id="movieInput" placeholder="Vul een filmtitel in (bijv. Dune)..." required>
+      <input type="text" id="movieInput" placeholder="Vul een filmtitel in (bijv. Inception)..." required>
       <button type="submit">Zoeken</button>
     </form>
 
     <div id="results" class="results"></div>
   </div>
 
+  <!-- Inladen van het configuratiebestand met de API key -->
+  <script src="config.js"></script>
+
   <script>
-    // Vul hier je eigen TMDB API Key in:
-    const API_KEY = 'f7d76ef717879269890c75b78b7c71d9'; 
     const REGION = 'BE';
 
-    // Uitgebreide lijst met streamingdiensten
+    // Filterlijst
     const ALLOWED_PROVIDERS = [
       'Netflix', 
       'Disney Plus', 
       'Streamz', 
       'Hulu', 
       'Amazon Prime Video', 
-      'Max',          // HBO Max
+      'Max', 
       'HBO', 
       'Apple TV', 
       'YouTube', 
-      'Google Play Movies' // TMDB gebruikt 'Google Play Movies' voor Google TV
+      'Google Play Movies'
     ];
+
+    // Directe links naar hoofdpagina's van diensten
+    const SERVICE_URLS = {
+      'Netflix': 'https://www.netflix.com/be-nl/',
+      'Disney Plus': 'https://www.disneyplus.com/nl-be',
+      'Streamz': 'https://www.streamz.be',
+      'Amazon Prime Video': 'https://www.primevideo.com',
+      'Max': 'https://www.max.com/be/nl',
+      'HBO': 'https://www.max.com/be/nl',
+      'Apple TV': 'https://tv.apple.com/be',
+      'YouTube': 'https://www.youtube.com/feed/storefront',
+      'Google Play Movies': 'https://play.google.com/store/movies'
+    };
 
     document.getElementById('searchForm').addEventListener('submit', function(e) {
       e.preventDefault();
@@ -120,22 +150,22 @@
       
       if (!query) return;
 
-      if (API_KEY === '') {
-        resultsDiv.innerHTML = '<p class="error">Vul eerst je eigen TMDB API key in op regel 91 van het bestand!</p>';
+      // Controleer of config.js geladen is en de sleutel is ingevuld
+      if (typeof CONFIG === 'undefined' || CONFIG.TMDB_API_KEY === 'JOUW_EIGEN_TMDB_API_KEY') {
+        resultsDiv.innerHTML = '<p class="error">Vul eerst je API key in binnen het bestand <strong>config.js</strong>!</p>';
         return;
       }
 
+      const apiKey = CONFIG.TMDB_API_KEY;
       resultsDiv.innerHTML = '<p>Zoeken...</p>';
 
       try {
-        // 1. Zoek de film
-        const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=nl-BE`;
+        // 1. Zoek film
+        const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(query)}&language=nl-BE`;
         const searchRes = await fetch(searchUrl);
-        
         if (!searchRes.ok) throw new Error(`API Fout: ${searchRes.status}`);
 
         const searchData = await searchRes.json();
-
         if (!searchData.results || searchData.results.length === 0) {
           resultsDiv.innerHTML = '<p>Geen film gevonden met deze titel.</p>';
           return;
@@ -143,41 +173,48 @@
 
         const movie = searchData.results[0];
 
-        // 2. Haal de aanbieders op
-        const providersUrl = `https://api.themoviedb.org/3/movie/${movie.id}/watch/providers?api_key=${API_KEY}`;
+        // 2. Haal streaminggegevens op
+        const providersUrl = `https://api.themoviedb.org/3/movie/${movie.id}/watch/providers?api_key=${apiKey}`;
         const providersRes = await fetch(providersUrl);
         const providersData = await providersRes.json();
 
         const belgiumData = providersData.results ? providersData.results[REGION] : null;
 
-        // 3. Verwerk de verschillende opties (Abonnement, Huur, Koop)
-        let html = `<h2>${movie.title} (${movie.release_date ? movie.release_date.substring(0,4) : 'Onbekend'})</h2>`;
+        // Link naar de specifieke film-pagina op TMDB/JustWatch
+        const filmDirectLink = belgiumData && belgiumData.link ? belgiumData.link : `https://www.themoviedb.org/movie/${movie.id}/watch`;
+
+        // 3. Bouw HTML op
+        let html = `<h2>
+          <a class="movie-title-link" href="${filmDirectLink}" target="_blank" title="Bekijk direct op alle diensten via TMDB">
+            ${movie.title} (${movie.release_date ? movie.release_date.substring(0,4) : 'Onbekend'}) ↗
+          </a>
+        </h2>`;
 
         if (belgiumData) {
-          // Combineer abonnement (flatrate), huur (rent) en koop (buy)
           const allOptionTypes = [
             ...(belgiumData.flatrate || []),
             ...(belgiumData.rent || []),
             ...(belgiumData.buy || [])
           ];
 
-          // Verwijder dubbele diensten
           const uniqueProviders = Array.from(
             new Map(allOptionTypes.map(item => [item.provider_id, item])).values()
           );
 
-          // Filter op de gekozen platformen
           const available = uniqueProviders.filter(provider => 
             ALLOWED_PROVIDERS.some(allowed => provider.provider_name.toLowerCase().includes(allowed.toLowerCase()))
           );
 
           if (available.length > 0) {
-            html += '<p>Beschikbaar in België via:</p><ul class="provider-list">';
+            html += '<p>Klik op de filmtitel hierboven of op de streamingdienst hieronder:</p><ul class="provider-list">';
             available.forEach(p => {
+              const directServiceUrl = SERVICE_URLS[p.provider_name] || filmDirectLink;
               html += `
                 <li class="provider-item">
                   <img src="https://image.tmdb.org/t/p/original${p.logo_path}" alt="${p.provider_name}">
-                  <span>${p.provider_name}</span>
+                  <a class="provider-link" href="${directServiceUrl}" target="_blank" rel="noopener noreferrer">
+                    ${p.provider_name} ↗
+                  </a>
                 </li>`;
             });
             html += '</ul>';
@@ -191,7 +228,7 @@
         resultsDiv.innerHTML = html;
 
       } catch (error) {
-        resultsDiv.innerHTML = `<p class="error">Er is een fout opgetreden: ${error.message}. Controleer je API-sleutel.</p>`;
+        resultsDiv.innerHTML = `<p class="error">Er is een fout opgetreden: ${error.message}.</p>`;
         console.error(error);
       }
     }
