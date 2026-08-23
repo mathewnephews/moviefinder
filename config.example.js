@@ -1,3 +1,0 @@
-const CONFIG = {
-  TMDB_API_KEY: 'ENTER_YOUR_KEY_HERE'
-};
